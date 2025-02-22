@@ -491,6 +491,50 @@ class Bird:
             if self.explosion.is_finished:
                 self.explosion = None
 
+        # Draw ammo bar if not using default weapon
+        if self.weapon.type != WeaponType.DEFAULT:
+            # Bar dimensions
+            bar_width = 50
+            bar_height = 4
+            bar_x = self.x - bar_width // 2
+            bar_y = self.y + self.radius + 10  # Position below bird
+
+            # Draw background (empty bar)
+            pygame.draw.rect(screen, (50, 50, 50),
+                           (bar_x, bar_y, bar_width, bar_height))
+
+            # Calculate filled portion
+            if self.weapon.ammo != float('inf'):
+                # Get max ammo based on weapon type
+                max_ammo = {
+                    WeaponType.SPREAD: 30,
+                    WeaponType.LASER: 50,
+                    WeaponType.CHARGE: 20,
+                    WeaponType.NUKE: 3
+                }.get(self.weapon.type, 0)
+
+                fill_width = int(bar_width * (self.weapon.ammo / max_ammo))
+
+                # Color based on weapon type
+                bar_colors = {
+                    WeaponType.SPREAD: (255, 0, 255),    # Purple
+                    WeaponType.LASER: (0, 128, 255),     # Blue
+                    WeaponType.CHARGE: (255, 255, 0),    # Yellow
+                    WeaponType.NUKE: (255, 165, 0)       # Orange
+                }
+                bar_color = bar_colors.get(self.weapon.type, (255, 255, 255))
+
+                # Draw filled portion
+                pygame.draw.rect(screen, bar_color,
+                               (bar_x, bar_y, fill_width, bar_height))
+
+                # Add glow effect
+                glow_surface = pygame.Surface((bar_width, bar_height), pygame.SRCALPHA)
+                glow_color = (*bar_color, 100)  # Semi-transparent version of bar color
+                pygame.draw.rect(glow_surface, glow_color,
+                               (0, 0, fill_width, bar_height))
+                screen.blit(glow_surface, (bar_x, bar_y - 1))  # Slight offset for glow
+
     def shoot(self, current_time):
         if current_time - self.weapon.last_shot_time >= self.weapon.cooldown:
             self.weapon.last_shot_time = current_time
@@ -846,6 +890,31 @@ class UFO:
         dome_rect = pygame.Rect(self.x - self.radius//2, self.y - dome_height,
                               self.radius, dome_height)
         pygame.draw.ellipse(screen, flash_color, dome_rect)
+
+        # Draw horizontal visor line (full width of UFO)
+        visor_width = self.radius * 2  # Full width of UFO
+        visor_height = 2  # 2 pixels thick
+        visor_x = self.x - visor_width // 2
+        visor_y = self.y - visor_height // 2
+        pygame.draw.rect(screen, (0, 128, 255),  # Blue visor
+                        (visor_x, visor_y, visor_width, visor_height))
+
+        # Add visor glow (full width)
+        glow_height = 1  # 1 pixel glow above and below
+        pygame.draw.rect(screen, (128, 200, 255),  # Light blue glow
+                        (visor_x, visor_y - glow_height, visor_width, glow_height))
+        pygame.draw.rect(screen, (128, 200, 255),  # Light blue glow
+                        (visor_x, visor_y + visor_height, visor_width, glow_height))
+
+        # Draw small mouth (frowning curve) - lower and inverted
+        mouth_width = self.radius * 0.3
+        mouth_y = self.y + self.radius * 0.4  # Moved down from 0.2 to 0.4
+        mouth_points = [
+            (self.x - mouth_width//2, mouth_y),
+            (self.x, mouth_y - 2),  # Center point slightly higher for frown
+            (self.x + mouth_width//2, mouth_y)
+        ]
+        pygame.draw.lines(screen, (50, 50, 50), False, mouth_points, 2)
 
         # Draw UFO lights with flashing effect
         light_radius = 3
@@ -1406,7 +1475,7 @@ def main():
             for enemy in enemies:
                 enemy.draw(screen)
             for bullet in bullets:
-                bullet.draw(screen)
+                    bullet.draw(screen)
             for powerup in powerups:
                 powerup.draw(screen)
             for gate in gates:
