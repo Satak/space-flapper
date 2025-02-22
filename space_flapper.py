@@ -14,7 +14,7 @@ PIPE_GAP = 200
 PIPE_FREQUENCY = 1500  # milliseconds
 INITIAL_GAP_SIZE = 220  # Initial gap between pipes
 MIN_GAP_SIZE = 100     # Minimum gap size
-GAP_DECREASE_RATE = 20  # How much to decrease gap per level
+GAP_DECREASE_RATE = 40  # How much to decrease gap per level
 PIPE_WIDTH = 50
 
 # Game States
