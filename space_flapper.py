@@ -12,9 +12,9 @@ FLAP_STRENGTH = -7
 PIPE_SPEED = 3
 PIPE_GAP = 200
 PIPE_FREQUENCY = 1500  # milliseconds
-INITIAL_GAP_SIZE = 160  # Initial gap between pipes
+INITIAL_GAP_SIZE = 220  # Initial gap between pipes
 MIN_GAP_SIZE = 100     # Minimum gap size
-GAP_DECREASE_RATE = 5  # How much to decrease gap per level
+GAP_DECREASE_RATE = 20  # How much to decrease gap per level
 PIPE_WIDTH = 50
 
 # Game States
@@ -943,6 +943,35 @@ class Explosion:
         screen.blit(outer_surface,
                    (self.x - self.radius, self.y - self.radius))
 
+class Star:
+    def __init__(self):
+        self.x = random.randint(0, SCREEN_WIDTH)
+        self.y = random.randint(0, SCREEN_HEIGHT)
+        # Fainter stars: brightness between 50 and 150 (darker grey to light grey)
+        brightness = random.randint(50, 150)
+        self.color = (brightness, brightness, brightness)
+        # Smaller stars: size between 1 and 2 pixels only
+        self.size = random.randint(1, 2)
+        # Even slower movement
+        self.speed = random.uniform(0.1, 0.3)
+
+    def update(self):
+        self.x -= self.speed
+        if self.x < 0:
+            self.x = SCREEN_WIDTH
+            self.y = random.randint(0, SCREEN_HEIGHT)
+            # New random brightness when recycling star
+            brightness = random.randint(50, 150)
+            self.color = (brightness, brightness, brightness)
+
+    def draw(self, screen):
+        # For smallest stars, just set a pixel
+        if self.size == 1:
+            screen.set_at((int(self.x), int(self.y)), self.color)
+        else:
+            # For size 2, draw a small circle
+            pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), 1)
+
 def get_level_info(score):
     """Get level info based on score"""
     level = score // 100
@@ -995,13 +1024,14 @@ def reset_game():
     powerups = []
     gates = []
     ufos = []
+    stars = [Star() for _ in range(50)]  # Reduced from 100 to 50 stars
     score = 0
     last_pipe = pygame.time.get_ticks()
     last_enemy = pygame.time.get_ticks()
     last_powerup = pygame.time.get_ticks()
     last_gate = pygame.time.get_ticks()
     last_ufo = pygame.time.get_ticks()
-    return bird, pipes, enemies, bullets, powerups, gates, ufos, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo
+    return bird, pipes, enemies, bullets, powerups, gates, ufos, stars, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo
 
 def draw_message(screen, text, y_offset=0):
     """Draw centered text message"""
@@ -1175,7 +1205,7 @@ def main():
         shoot_sound = laser_sound = spread_sound = hit_sound = shield_up_sound = power_up_sound = game_over_sound = enemy_death_sound = charge_sound = shield_recharge_sound = ufo_hit_sound = ufo_death_sound = ufo_shoot_sound = title_music = ufo_presence_sound = empty_sound
 
     game_state = MENU
-    bird, pipes, enemies, bullets, powerups, gates, ufos, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo = reset_game()
+    bird, pipes, enemies, bullets, powerups, gates, ufos, stars, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo = reset_game()
     enemy_frequency = 2000  # milliseconds
     powerup_frequency = 8000  # Increased frequency for power-ups
     font = pygame.font.Font(None, 36)
@@ -1208,7 +1238,7 @@ def main():
                     elif game_state == PLAYING:
                         bird.flap()
                     elif game_state == GAME_OVER:
-                        bird, pipes, enemies, bullets, powerups, gates, ufos, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo = reset_game()
+                        bird, pipes, enemies, bullets, powerups, gates, ufos, stars, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo = reset_game()
                         game_state = PLAYING
                 elif event.key == pygame.K_x and game_state == PLAYING:
                     if bird.weapon.type == WeaponType.CHARGE:
@@ -1416,6 +1446,11 @@ def main():
 
         # Draw
         screen.fill(bg_color)  # Use level background color
+
+        # Draw stars first (before everything else)
+        for star in stars:
+            star.update()
+            star.draw(screen)
 
         if game_state == MENU:
             draw_message(screen, "Flappy Bird", -80)
