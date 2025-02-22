@@ -480,24 +480,6 @@ class Bird:
         # Draw weapon charge indicator
         self.weapon.draw_charge_indicator(screen, int(self.x), int(self.y))
 
-        # Draw ammo count if not using default weapon
-        if self.weapon.type != WeaponType.DEFAULT:
-            font = pygame.font.Font(None, 24)
-            ammo_text = f"Ammo: {self.weapon.ammo}"
-            ammo_surface = font.render(ammo_text, True, (255, 255, 255))
-            screen.blit(ammo_surface, (10, 40))
-
-            # Draw weapon type
-            weapon_text = f"Weapon: {self.weapon.type.name}"
-            weapon_surface = font.render(weapon_text, True, (255, 255, 255))
-            screen.blit(weapon_surface, (10, 70))
-
-        # Draw score
-        font = pygame.font.Font(None, 36)
-        score_text = f"Score: {score}"
-        score_surface = font.render(score_text, True, (255, 255, 255))
-        screen.blit(score_surface, (10, 10))
-
         # Draw active nuke and its trail
         if self.active_nuke:
             self.active_nuke.draw(screen)
@@ -1417,6 +1399,7 @@ def main():
             draw_message(screen, "Press SPACE to Start", -40)
             draw_message(screen, "X to Shoot, SPACE to Flap", 0)
         else:
+            # Draw game elements
             bird.draw(screen, current_time, score)
             for pipe in pipes:
                 pipe.draw(screen)
@@ -1431,11 +1414,31 @@ def main():
             for ufo in ufos:
                 ufo.draw(screen)
 
-            # Draw high score in top right corner
+            # Draw UI elements last so they're always on top
+            font = pygame.font.Font(None, 36)
+
+            # Draw score in top left
+            score_text = font.render(f'Score: {score}', True, WHITE)
+            screen.blit(score_text, (10, 10))
+
+            # Draw high score in top right
             high_score_text = font.render(f'High Score: {high_score}', True, WHITE)
             high_score_rect = high_score_text.get_rect()
-            high_score_rect.topright = (SCREEN_WIDTH - 10, 10)  # 10px padding from right and top
+            high_score_rect.topright = (SCREEN_WIDTH - 10, 10)
             screen.blit(high_score_text, high_score_rect)
+
+            # Draw weapon info if not using default weapon
+            if bird.weapon.type != WeaponType.DEFAULT:
+                font = pygame.font.Font(None, 24)
+                # Draw ammo count
+                ammo_text = f"Ammo: {bird.weapon.ammo}"
+                ammo_surface = font.render(ammo_text, True, WHITE)
+                screen.blit(ammo_surface, (10, 40))
+
+                # Draw weapon type
+                weapon_text = f"Weapon: {bird.weapon.type.name}"
+                weapon_surface = font.render(weapon_text, True, WHITE)
+                screen.blit(weapon_surface, (10, 70))
 
             if game_state == GAME_OVER:
                 draw_message(screen, "Game Over!", -20)
