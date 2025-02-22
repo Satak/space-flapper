@@ -50,8 +50,11 @@ CYAN = (0, 255, 255)
 ORANGE = (255, 165, 0)
 GREY = (128, 128, 128)  # Color for pipes
 YELLOW = (255, 255, 0)
+DARK_YELLOW = (50, 50, 0)
+DARK_PURPLE = (50, 0, 50)
 DARK_GREEN = (0, 20, 0)
 DARK_BLUE = (0, 0, 20)
+DARK_RED = (50, 0, 0)
 
 class Weapon:
     def __init__(self, type=WeaponType.DEFAULT):
@@ -990,11 +993,11 @@ def get_level_info(score):
     elif level == 2:
         bg_color = DARK_BLUE
     elif level == 3:
-        bg_color = YELLOW
+        bg_color = DARK_YELLOW
     elif level == 4:
-        bg_color = PURPLE
+        bg_color = DARK_PURPLE
     else:
-        bg_color = RED
+        bg_color = DARK_RED
 
     return gap_size, bg_color
 
