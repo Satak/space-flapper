@@ -593,53 +593,33 @@ class Bird:
             nuke = Bullet(self.x + self.radius * 2, self.y, WeaponType.NUKE, velocity=3)
             self.active_nuke = nuke
 
-    def detonate_nuke(self, enemies, bullets, screen, ufos, gates):
-        if self.active_nuke and self.active_nuke in bullets:
-            # Create explosion animation
-            self.explosion = Explosion(self.active_nuke.x, self.active_nuke.y)
-            explosion_sound.play()
+    def detonate_nuke(self, enemies, bullets, screen, ufos, gates, blobs):
+        """Detonate the nuke, destroying all enemies on screen"""
+        if not self.active_nuke:
+            return False, 0
 
-            # Apply damage to everything in explosion radius
-            nuke_pos = (self.active_nuke.x, self.active_nuke.y)
-            enemies_killed = 0
+        # Create explosion at nuke position
+        self.explosion = Explosion(self.active_nuke.x, self.active_nuke.y)
+        explosion_sound.play()
 
-            # Kill ALL enemies within the massive blast radius
-            for enemy in enemies[:]:
-                distance = math.sqrt((enemy.x - nuke_pos[0])**2 +
-                           (enemy.y - nuke_pos[1])**2)
-                if distance <= self.explosion.radius:
-                    enemies.remove(enemy)
-                    enemies_killed += 1
-                    enemy_death_sound.play()
-
-            # Destroy UFOs in blast radius
-            for ufo in ufos[:]:
-                distance = math.sqrt((ufo.x - nuke_pos[0])**2 +
-                           (ufo.y - nuke_pos[1])**2)
-                if distance <= self.explosion.radius:
-                    ufos.remove(ufo)
-                    enemies_killed += 2  # More points for UFO kills
-                    ufo_death_sound.play()
-                    if len(ufos) == 0:
-                        ufo_presence_sound.stop()
-
-            # Destroy gates in blast radius
-            for gate in gates[:]:
-                if abs(gate.x - nuke_pos[0]) <= self.explosion.radius:
-                    if not gate.destroyed:
-                        gate.destroyed = True
-                        enemies_killed += 1  # Points for destroying gates
-
-            # Remove the nuke
+        # Remove the nuke from bullets
+        if self.active_nuke in bullets:
             bullets.remove(self.active_nuke)
-            self.active_nuke = None
+        self.active_nuke = None
 
-            # Decrease ammo after successful detonation
-            self.weapon.ammo -= 1
-            if self.weapon.ammo <= 0:
-                return True, enemies_killed
-            return False, enemies_killed
-        return False, 0
+        # Count enemies killed
+        enemies_killed = len(enemies) + len(ufos) + len(blobs)  # Add blobs to kill count
+
+        # Clear all enemies
+        enemies.clear()
+        ufos.clear()
+        blobs.clear()  # Clear all blobs
+
+        # Destroy all gates
+        for gate in gates:
+            gate.destroyed = True
+
+        return True, enemies_killed
 
 class PowerUp:
     def __init__(self, type, x, y):
@@ -691,6 +671,183 @@ class PowerUp:
         else:
             weapon_type = WeaponType[self.type.name]
             bird.weapon = Weapon(weapon_type)
+
+class TentacleBlob:
+    def __init__(self, x=None, y=None):
+        self.x = x if x is not None else SCREEN_WIDTH + 20
+        self.y = y if y is not None else random.randint(50, SCREEN_HEIGHT - 50)
+        self.radius = 15
+        self.health = 3
+        self.color = (0, 255, 0)  # Green blob
+        self.glow_color = (128, 255, 128)  # Light green glow
+
+        # Movement parameters
+        self.speed = 3
+        self.movement_timer = 0
+        self.direction_change_delay = random.randint(30, 60)
+        self.dx = -self.speed
+        self.dy = random.choice([-1, 1]) * self.speed
+        self.moving_right = False  # Track direction
+
+        # Tentacle parameters
+        self.num_tentacles = 8
+        self.base_tentacle_length = 100  # Base length
+        self.tentacle_length = self.base_tentacle_length
+        self.tentacle_segments = 15
+        self.tentacles = []
+        self.tentacle_wiggle_speed = 0.08
+        self.tentacle_phase = 0
+        self.tentacle_thickness = 5
+
+        # Tentacle growth parameters
+        self.length_modifiers = [1.0] * self.num_tentacles  # Individual length modifiers
+        self.growth_speeds = [random.uniform(0.02, 0.04) for _ in range(self.num_tentacles)]
+        self.growth_phases = [random.uniform(0, 2 * math.pi) for _ in range(self.num_tentacles)]
+        self.min_length_factor = 0.7  # Minimum length is 70% of base
+        self.max_length_factor = 1.3  # Maximum length is 130% of base
+
+        # Initialize tentacles with evenly spaced angles
+        angle_step = (2 * math.pi) / self.num_tentacles  # Evenly space tentacles
+        for i in range(self.num_tentacles):
+            angle = i * angle_step  # This will space them evenly around the circle
+            self.tentacles.append({
+                'angle': angle,
+                'segments': [(self.x, self.y) for _ in range(self.tentacle_segments)]
+            })
+
+        # Sound parameters
+        self.last_sound_time = pygame.time.get_ticks()
+        self.sound_interval = 2000  # Play sound every 2 seconds
+        self.sound_started = False  # Track if we've started playing sounds
+
+        # Flash effect parameters
+        self.flash_timer = 0
+        self.flash_duration = 5  # Frames to show flash
+        self.is_flashing = False
+
+    def update(self):
+        current_time = pygame.time.get_ticks()
+
+        # Play periodic sound when on screen
+        if not self.sound_started and self.x < SCREEN_WIDTH - self.radius:
+            blob_sound.play()
+            self.sound_started = True
+            self.last_sound_time = current_time
+        elif self.sound_started and current_time - self.last_sound_time >= self.sound_interval:
+            blob_sound.play()
+            self.last_sound_time = current_time
+
+        # Change direction at screen edges
+        if self.x < self.radius and not self.moving_right:
+            self.dx = self.speed  # Move right
+            self.moving_right = True
+            blob_sound.play()  # Play sound when changing direction
+        elif self.x > SCREEN_WIDTH - self.radius and self.moving_right:
+            self.dx = -self.speed  # Move left
+            self.moving_right = False
+            blob_sound.play()  # Play sound when changing direction
+
+        # Update position
+        self.x += self.dx
+        self.y += self.dy
+
+        # Keep in bounds
+        if self.y < self.radius:
+            self.y = self.radius
+            self.dy *= -1
+        elif self.y > SCREEN_HEIGHT - self.radius:
+            self.y = SCREEN_HEIGHT - self.radius
+            self.dy *= -1
+
+        # Update tentacle lengths
+        for i in range(self.num_tentacles):
+            # Use sine wave to smoothly vary length
+            self.growth_phases[i] += self.growth_speeds[i]
+            self.length_modifiers[i] = (
+                ((self.max_length_factor - self.min_length_factor) / 2) *
+                math.sin(self.growth_phases[i]) +
+                ((self.max_length_factor + self.min_length_factor) / 2)
+            )
+
+        # Update tentacle physics
+        self.tentacle_phase += self.tentacle_wiggle_speed
+        for i, tentacle in enumerate(self.tentacles):
+            # Update tentacle base position
+            tentacle['segments'][0] = (self.x, self.y)
+
+            # Calculate current tentacle length
+            current_length = self.base_tentacle_length * self.length_modifiers[i]
+            segment_length = current_length / self.tentacle_segments
+
+            # Update each segment with wave motion
+            for j in range(1, self.tentacle_segments):
+                prev_x, prev_y = tentacle['segments'][j-1]
+                angle = tentacle['angle'] + math.sin(self.tentacle_phase + j * 0.5) * 0.3
+                new_x = prev_x + math.cos(angle) * segment_length
+                new_y = prev_y + math.sin(angle) * segment_length
+                tentacle['segments'][j] = (new_x, new_y)
+
+            # Rotate tentacle base angle for next frame
+            tentacle['angle'] += 0.02
+
+    def flash(self):
+        """Start flash effect"""
+        self.is_flashing = True
+        self.flash_timer = self.flash_duration
+
+    def draw(self, screen):
+        # Get current color based on flash state
+        current_color = (255, 255, 255) if self.is_flashing else self.color
+        current_glow = (255, 255, 255) if self.is_flashing else self.glow_color
+
+        # Draw glow
+        pygame.draw.circle(screen, current_glow, (int(self.x), int(self.y)), self.radius + 2)
+
+        # Draw main body
+        pygame.draw.circle(screen, current_color, (int(self.x), int(self.y)), self.radius)
+
+        # Draw tentacles
+        for tentacle in self.tentacles:
+            for i in range(1, len(tentacle['segments'])):
+                start = tentacle['segments'][i-1]
+                end = tentacle['segments'][i]
+                # Gradient color from body to tip
+                if self.is_flashing:
+                    segment_color = (255, 255, 255)  # White when flashing
+                else:
+                    color_factor = 1 - (i / self.tentacle_segments)
+                    segment_color = (
+                        int(self.color[0] * color_factor),
+                        int(self.color[1] * color_factor),
+                        int(self.color[2] * color_factor)
+                    )
+                pygame.draw.line(screen, segment_color, start, end, self.tentacle_thickness)
+
+        # Update flash timer
+        if self.is_flashing:
+            self.flash_timer -= 1
+            if self.flash_timer <= 0:
+                self.is_flashing = False
+
+    def get_rect(self):
+        # Return rect for main body collision
+        return pygame.Rect(self.x - self.radius, self.y - self.radius,
+                         self.radius * 2, self.radius * 2)
+
+    def get_tentacle_rects(self):
+        # Return list of rects for tentacle segment collisions
+        tentacle_rects = []
+        for tentacle in self.tentacles:
+            for i in range(1, len(tentacle['segments'])):
+                x1, y1 = tentacle['segments'][i-1]
+                x2, y2 = tentacle['segments'][i]
+                # Create a small rect for each segment
+                rect_x = min(x1, x2)
+                rect_y = min(y1, y2)
+                rect_w = abs(x2 - x1) + 4  # Add some padding
+                rect_h = abs(y2 - y1) + 4
+                tentacle_rects.append(pygame.Rect(rect_x, rect_y, rect_w, rect_h))
+        return tentacle_rects
 
 class Enemy:
     def __init__(self):
@@ -1086,7 +1243,10 @@ def reset_game():
     last_powerup = pygame.time.get_ticks()
     last_gate = pygame.time.get_ticks()
     last_ufo = pygame.time.get_ticks()
-    return bird, pipes, enemies, bullets, powerups, gates, ufos, stars, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo
+    blobs = []  # Add to reset_game() too
+    last_blob = pygame.time.get_ticks()
+    blob_frequency = 20000  # Increased from 5000 to 20000 (20 seconds base frequency)
+    return bird, pipes, enemies, bullets, powerups, gates, ufos, stars, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo, blobs, last_blob, blob_frequency
 
 def draw_message(screen, text, y_offset=0):
     """Draw centered text message"""
@@ -1103,7 +1263,7 @@ def load_sounds():
         'shoot', 'laser', 'spread', 'hit', 'game_over', 'power_up',
         'enemy_death', 'charge', 'shield_recharge', 'ufo_hit',
         'ufo_death', 'ufo_shoot', 'title_music', 'ufo_presence',
-        'explosion'  # Add explosion sound to the list
+        'explosion', 'blob'  # Add blob to sound files
     ]
     for file in sound_files:
         try:
@@ -1136,7 +1296,7 @@ def spawn_ufo(last_ufo, current_time):
     return None, last_ufo
 
 def main():
-    global shoot_sound, laser_sound, spread_sound, hit_sound, shield_up_sound, power_up_sound, game_over_sound, enemy_death_sound, charge_sound, shield_recharge_sound, ufo_hit_sound, ufo_death_sound, ufo_shoot_sound, title_music, ufo_presence_sound, explosion_sound
+    global shoot_sound, laser_sound, spread_sound, hit_sound, shield_up_sound, power_up_sound, game_over_sound, enemy_death_sound, charge_sound, shield_recharge_sound, ufo_hit_sound, ufo_death_sound, ufo_shoot_sound, title_music, ufo_presence_sound, explosion_sound, blob_sound
 
     pygame.init()
     pygame.mixer.quit()
@@ -1169,6 +1329,7 @@ def main():
         title_music = sounds.get('title_music', empty_sound)
         ufo_presence_sound = sounds.get('ufo_presence', empty_sound)
         explosion_sound = sounds.get('explosion', empty_sound)
+        blob_sound = sounds.get('blob', empty_sound)
 
         # Set volumes
         shoot_sound.set_volume(0.4)
@@ -1186,6 +1347,7 @@ def main():
         title_music.set_volume(0.5)
         ufo_presence_sound.set_volume(0.2)
         explosion_sound.set_volume(0.5)
+        blob_sound.set_volume(0.4)
 
         shield_up_sound = power_up_sound
 
@@ -1196,10 +1358,10 @@ def main():
         shoot_sound = laser_sound = spread_sound = hit_sound = shield_up_sound = \
         power_up_sound = game_over_sound = enemy_death_sound = charge_sound = \
         shield_recharge_sound = ufo_hit_sound = ufo_death_sound = ufo_shoot_sound = \
-        title_music = ufo_presence_sound = explosion_sound = empty_sound
+        title_music = ufo_presence_sound = explosion_sound = blob_sound = empty_sound
 
     game_state = MENU
-    bird, pipes, enemies, bullets, powerups, gates, ufos, stars, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo = reset_game()
+    bird, pipes, enemies, bullets, powerups, gates, ufos, stars, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo, blobs, last_blob, blob_frequency = reset_game()
     enemy_frequency = 2000
     powerup_frequency = 8000
     font = pygame.font.Font(None, 36)
@@ -1231,7 +1393,7 @@ def main():
                     elif game_state == PLAYING:
                         bird.flap()
                     elif game_state == GAME_OVER:
-                        bird, pipes, enemies, bullets, powerups, gates, ufos, stars, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo = reset_game()
+                        bird, pipes, enemies, bullets, powerups, gates, ufos, stars, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo, blobs, last_blob, blob_frequency = reset_game()
                         game_state = PLAYING
                 elif event.key == pygame.K_x and game_state == PLAYING:
                     if bird.weapon.type == WeaponType.CHARGE:
@@ -1239,7 +1401,7 @@ def main():
                         charging_started = True
                     elif bird.weapon.type == WeaponType.NUKE and bird.active_nuke:
                         # Only handle detonation on key press
-                        should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates)
+                        should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates, blobs)
                         score += enemies_killed * 5  # Add 5 points per enemy killed
                         if should_reset:
                             bird.weapon = Weapon()
@@ -1307,6 +1469,16 @@ def main():
                     ufos.append(ufo)
                     ufo_presence_sound.play(-1)  # Loop the sound
             last_ufo = current_time
+
+            # Spawn new blobs
+            if len(blobs) == 0:  # Only spawn if no blobs exist
+                if current_time - last_blob > blob_frequency:
+                    # Only spawn after score 50 and with 20% chance
+                    if score > 50 and random.random() < 0.2:
+                        blobs.append(TentacleBlob())
+                        last_blob = current_time
+                    else:
+                        last_blob = current_time - blob_frequency * 0.8  # Try again soon if didn't spawn
 
             # Update
             bird.update(current_time)
@@ -1405,7 +1577,7 @@ def main():
                     if not gate.destroyed and bullet.get_rect().colliderect(gate.get_rect()):
                         if bullet.weapon_type == WeaponType.NUKE and bullet == bird.active_nuke:
                             # Auto-detonate nuke on gate collision
-                            should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates)
+                            should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates, blobs)
                             score += enemies_killed * 5  # Add points for kills
                             if should_reset:
                                 bird.weapon = Weapon()
@@ -1423,7 +1595,7 @@ def main():
                     if bullet.get_rect().colliderect(enemy.get_rect()):
                         if bullet.weapon_type == WeaponType.NUKE and bullet == bird.active_nuke:
                             # Auto-detonate nuke on enemy collision
-                            should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates)
+                            should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates, blobs)
                             score += enemies_killed * 5  # Add points for kills
                             if should_reset:
                                 bird.weapon = Weapon()
@@ -1464,6 +1636,55 @@ def main():
                 if bullet.x > SCREEN_WIDTH and bullet != bird.active_nuke:
                     bullets.remove(bullet)
 
+            # Update blobs
+            for blob in blobs[:]:
+                blob.update()
+
+                # Check collision with player
+                if bird.get_rect().colliderect(blob.get_rect()):
+                    blob.flash()  # Flash when hitting player
+                    if bird.take_hit(current_time):
+                        game_over_sound.play()
+                        game_state = GAME_OVER
+                    continue
+
+                # Check tentacle collisions with player
+                for tentacle_rect in blob.get_tentacle_rects():
+                    if bird.get_rect().colliderect(tentacle_rect):
+                        blob.flash()  # Flash when hitting player with tentacles
+                        if bird.take_hit(current_time):
+                            game_over_sound.play()
+                            game_state = GAME_OVER
+                        break
+
+                # Check bullet collisions
+                for bullet in bullets[:]:
+                    if bullet.get_rect().colliderect(blob.get_rect()):
+                        blob.flash()  # Flash when hit by bullet
+                        if bullet.weapon_type == WeaponType.NUKE and bullet == bird.active_nuke:
+                            should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates, blobs)
+                            score += enemies_killed * 5
+                            if should_reset:
+                                bird.weapon = Weapon()
+                        else:
+                            blob.health -= bullet.damage
+                            ufo_hit_sound.play()
+                            if blob.health <= 0:
+                                blobs.remove(blob)
+                                score += 10
+                                ufo_death_sound.play()
+                                # Spawn powerup when blob dies
+                                powerup_type = random.choice([
+                                    PowerUpType.SHIELD,
+                                    PowerUpType.SPREAD,
+                                    PowerUpType.LASER,
+                                    PowerUpType.CHARGE,
+                                    PowerUpType.NUKE  # Include NUKE in blob's drops
+                                ])
+                                powerups.append(PowerUp(powerup_type, blob.x, blob.y))
+                            bullets.remove(bullet)
+                        break
+
         # Draw
         screen.fill(bg_color)  # Use level background color
 
@@ -1491,6 +1712,10 @@ def main():
                 gate.draw(screen, current_time)
             for ufo in ufos:
                 ufo.draw(screen)
+
+            # Draw blobs
+            for blob in blobs:
+                blob.draw(screen)
 
             # Draw UI elements last so they're always on top
             font = pygame.font.Font(None, 36)

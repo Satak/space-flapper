@@ -530,6 +530,50 @@ def create_explosion_sound():
         wav_file.setframerate(sample_rate)
         wav_file.writeframes(explosion.tobytes())
 
+def create_blob_sound(filename):
+    """Create a weird, slimy sound for tentacle blob"""
+    duration = 0.3
+    sample_rate = 44100
+    t = np.linspace(0, duration, int(sample_rate * duration), False)
+
+    # Base frequency modulation (lower frequency for more alien sound)
+    base_freq = 200
+    freq_mod = 1 + np.sin(2 * np.pi * 4 * t) * 0.5  # Slower, deeper wobble
+
+    # Create main sound with frequency modulation (further reduced amplitude)
+    audio = 0.15 * np.sin(2 * np.pi * base_freq * t * freq_mod)  # Reduced from 0.3 to 0.15
+
+    # Add harmonic overtones (further reduced amplitudes)
+    audio += 0.05 * np.sin(4 * np.pi * base_freq * t * freq_mod)  # Reduced from 0.1 to 0.05
+    audio += 0.025 * np.sin(6 * np.pi * base_freq * t * freq_mod)  # Reduced from 0.05 to 0.025
+
+    # Add bubbling effect (further reduced amplitudes)
+    bubble_freqs = [400, 600, 800]
+    for freq in bubble_freqs:
+        bubble_mod = 1 + np.sin(2 * np.pi * 2 * t) * 0.2
+        audio += 0.015 * np.sin(2 * np.pi * freq * t * bubble_mod)  # Reduced from 0.03 to 0.015
+
+    # Apply envelope with slight fade-in and fade-out
+    fade_samples = int(0.05 * sample_rate)  # 50ms fade
+    envelope = np.ones_like(t)
+    envelope[:fade_samples] = np.linspace(0, 1, fade_samples)
+    envelope[-fade_samples:] = np.linspace(1, 0, fade_samples)
+    audio = audio * envelope
+
+    # Additional overall volume reduction
+    audio = audio * 0.25  # Reduced from 0.5 to 0.25
+
+    # Normalize and convert to 16-bit integer
+    audio = audio / np.max(np.abs(audio))  # Normalize
+    audio = np.int16(audio * 8192)  # Reduced from 16384 to 8192 (quarter volume)
+
+    # Save to file
+    with wave.open(filename, 'wb') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(audio.tobytes())
+
 def main():
     try:
         os.makedirs('sounds', exist_ok=True)
@@ -548,6 +592,7 @@ def main():
         create_title_music()  # Title screen music
         create_ufo_presence_sound()  # UFO presence sound
         create_explosion_sound()
+        create_blob_sound('sounds/blob.wav')  # Add blob sound creation
         print("Successfully created sound files!")
     except Exception as e:
         print(f"Error creating sounds: {str(e)}")
