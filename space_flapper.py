@@ -131,6 +131,7 @@ class Weapon:
                 screen.blit(super_text, super_rect)
 
     def release_charge(self, x, y, current_time):
+        """Release charge weapon in Weapon class"""
         if not self.is_charging:
             return [], False
 
@@ -140,9 +141,7 @@ class Weapon:
             return [], False
 
         if self.ammo > 0 and current_time - self.last_shot_time >= self.cooldown:
-            self.ammo -= 1
             self.last_shot_time = current_time
-
             bullets = []
 
             # Super charge creates a circular blast pattern
@@ -159,8 +158,11 @@ class Weapon:
                 bullet = Bullet(x, y, WeaponType.CHARGE, charge_level=self.charge_level)
                 bullets.append(bullet)
 
+            self.ammo -= 1
             self.charge_level = 0
-            return bullets, self.ammo == 0
+            return bullets, self.ammo <= 0
+
+        return [], False
 
     def shoot(self, x, y, current_time):
         if self.type == WeaponType.CHARGE:
@@ -204,11 +206,31 @@ class Bullet:
             self.damage = 100
             self.color = (255, 0, 0)
             self.trail_color = (255, 165, 0)
-        else:
+        elif weapon_type == WeaponType.CHARGE:
+            self.velocity = 8 if velocity is None else velocity
+            self.radius = 10 + int((charge_level / 100) * 10)
+            self.damage = 2 + int((charge_level / 100) * 4)
+            self.color = (255, 255, 0)  # Yellow
+            self.glow_color = (255, 255, 200)  # Light yellow for glow
+        elif weapon_type == WeaponType.SPREAD:
+            self.velocity = 8 if velocity is None else velocity
+            self.radius = 8  # Medium size
+            self.damage = 2
+            self.color = (255, 0, 255)  # Purple
+            self.glow_color = (255, 128, 255)  # Light purple for glow
+        elif weapon_type == WeaponType.LASER:
+            self.velocity = 12 if velocity is None else velocity  # Faster for laser
+            self.width = 20  # Longer rectangle
+            self.height = 4  # Thinner rectangle
+            self.damage = 1
+            self.color = (0, 128, 255)  # Blue
+            self.glow_color = (128, 200, 255)  # Light blue for glow
+        else:  # DEFAULT
             self.velocity = 10 if velocity is None else velocity
             self.width = 10
             self.height = 5
             self.damage = 1
+            self.color = (0, 255, 0)  # Green
 
     def update(self):
         self.x += self.velocity * math.cos(self.angle)
@@ -226,8 +248,30 @@ class Bullet:
                 if trail_radius > 0:
                     pygame.draw.circle(screen, self.trail_color,
                                      (int(trail_x), int(self.y)), trail_radius)
-        else:
-            pygame.draw.rect(screen, (0, 255, 0),
+        elif self.weapon_type == WeaponType.CHARGE:
+            # Draw charge bullet with glow effect
+            # Draw outer glow
+            pygame.draw.circle(screen, self.glow_color,
+                             (int(self.x), int(self.y)), self.radius + 2)
+            # Draw main bullet
+            pygame.draw.circle(screen, self.color,
+                             (int(self.x), int(self.y)), self.radius)
+        elif self.weapon_type == WeaponType.SPREAD:
+            # Spread bullet with glow
+            pygame.draw.circle(screen, self.glow_color,
+                             (int(self.x), int(self.y)), self.radius + 2)
+            pygame.draw.circle(screen, self.color,
+                             (int(self.x), int(self.y)), self.radius)
+        elif self.weapon_type == WeaponType.LASER:
+            # Laser bullet with glow effect
+            pygame.draw.rect(screen, self.glow_color,
+                           (int(self.x), int(self.y - self.height//2 - 1),
+                            self.width + 2, self.height + 2))
+            pygame.draw.rect(screen, self.color,
+                           (int(self.x), int(self.y - self.height//2),
+                            self.width, self.height))
+        else:  # DEFAULT
+            pygame.draw.rect(screen, self.color,
                            (int(self.x), int(self.y), self.width, self.height))
 
     def is_off_screen(self):
@@ -235,16 +279,20 @@ class Bullet:
 
     def get_rect(self):
         """Get bullet's collision rectangle"""
-        if self.weapon_type == WeaponType.DEFAULT:
-            return pygame.Rect(self.x, self.y - self.height//2, self.width, self.height)
+        if self.weapon_type == WeaponType.NUKE:
+            return pygame.Rect(self.x - self.radius, self.y - self.radius,
+                             self.radius * 2, self.radius * 2)
         elif self.weapon_type == WeaponType.SPREAD:
-            return pygame.Rect(self.x - self.radius, self.y - self.radius,
-                             self.radius * 2, self.radius * 2)
-        elif self.weapon_type == WeaponType.LASER:
-            return pygame.Rect(self.x, self.y - self.height//2, self.width, self.height)
-        else:  # CHARGE
-            return pygame.Rect(self.x - self.radius, self.y - self.radius,
-                             self.radius * 2, self.radius * 2)
+            radius = 10  # Define spread bullet radius
+            return pygame.Rect(self.x - radius, self.y - radius,
+                             radius * 2, radius * 2)
+        elif self.weapon_type == WeaponType.CHARGE:
+            radius = 10  # Define charge bullet radius
+            return pygame.Rect(self.x - radius, self.y - radius,
+                             radius * 2, radius * 2)
+        else:  # DEFAULT and LASER
+            return pygame.Rect(self.x, self.y - self.height//2,
+                             self.width, self.height)
 
 class Bird:
     def __init__(self):
@@ -503,7 +551,13 @@ class Bird:
         return self.weapon.update_charge(current_time)
 
     def release_charge(self, current_time):
-        return self.weapon.release_charge(self.x + self.radius, self.y + self.radius // 2, current_time)
+        """Release charge weapon in Bird class"""
+        if self.weapon.type == WeaponType.CHARGE:
+            new_bullets, should_reset = self.weapon.release_charge(self.x, self.y, current_time)
+            if should_reset:
+                self.weapon = Weapon()  # Reset to default weapon
+            return new_bullets, should_reset
+        return [], False  # Return empty list and False if not charge weapon
 
     def get_rect(self):
         """Get bird's collision rectangle, slightly smaller than visual size for better gameplay"""
