@@ -580,7 +580,7 @@ class Bird:
             # Kill ALL enemies within the massive blast radius
             for enemy in enemies[:]:
                 distance = math.sqrt((enemy.x - nuke_pos[0])**2 +
-                                   (enemy.y - nuke_pos[1])**2)
+                           (enemy.y - nuke_pos[1])**2)
                 if distance <= self.explosion.radius:
                     enemies.remove(enemy)
                     enemies_killed += 1
@@ -589,7 +589,7 @@ class Bird:
             # Destroy UFOs in blast radius
             for ufo in ufos[:]:
                 distance = math.sqrt((ufo.x - nuke_pos[0])**2 +
-                                   (ufo.y - nuke_pos[1])**2)
+                           (ufo.y - nuke_pos[1])**2)
                 if distance <= self.explosion.radius:
                     ufos.remove(ufo)
                     enemies_killed += 2  # More points for UFO kills
@@ -788,89 +788,66 @@ class Pipe:
 
 class UFO:
     def __init__(self, x=None, y=None):
+        # Start position should be off-screen
+        self.x = SCREEN_WIDTH + 40
+        self.y = random.randint(50, SCREEN_HEIGHT//3)
         self.radius = 20
-        self.x = x if x is not None else SCREEN_WIDTH + self.radius
-        self.y = y if y is not None else random.randint(50, SCREEN_HEIGHT - 50)
-        self.dx = -2  # Initial movement to left to enter screen
-        self.dy = 0
         self.health = 3
         self.bullets = []
-        self.shoot_timer = 0
-        self.shoot_interval = 60  # Frames between shots
-        self.movement_timer = 0
-        self.entered_screen = False  # Track if UFO has entered the play area
+        self.last_shot = pygame.time.get_ticks()
+        self.shot_delay = 2000
         self.flash_timer = 0
-        self.flash_interval = 10  # Lower = faster flashing
-        self.base_y = self.y  # Store initial y position for vertical movement
+        self.flash_interval = 30
+
+        # Movement parameters
+        self.movement_timer = 0
+        self.target_x = SCREEN_WIDTH * 0.7  # Target center position
+        self.target_y = SCREEN_HEIGHT * 0.5
+        self.movement_speed = 0.02
+        self.entrance_speed = 2  # Constant entrance speed
 
     def update(self):
-        # Move UFO
-        self.x += self.dx
-        self.y += self.dy
+        current_time = pygame.time.get_ticks()
 
-        # Check if UFO has entered the screen
-        if not self.entered_screen and self.x <= SCREEN_WIDTH - self.radius * 2:
-            self.entered_screen = True
-            self.dx = 1  # Start moving right
-            self.base_y = self.y
+        # Move towards play area while doing pattern movement
+        if self.x > self.target_x:
+            self.x -= self.entrance_speed
 
-        # If in screen, do Lissajous movement pattern
-        if self.entered_screen:
-            self.movement_timer += 0.02
-            # Lissajous pattern with different frequencies for more interesting movement
-            self.dx = math.sin(self.movement_timer) * 3
-            # Larger vertical movement range
-            self.dy = math.sin(1.5 * self.movement_timer) * 2.5
+        # Always do pattern movement
+        self.movement_timer += self.movement_speed
 
-            # Center point for the movement
-            center_x = SCREEN_WIDTH * 0.7  # Keep UFO more towards the right side
-            center_y = SCREEN_HEIGHT * 0.5  # Center vertically
+        # Calculate pattern offsets
+        offset_x = math.sin(self.movement_timer) * 100
+        offset_y = math.sin(self.movement_timer * 1.5) * 80
 
-            # Update position with bounded movement
-            target_x = center_x + math.sin(self.movement_timer) * (SCREEN_WIDTH * 0.2)
-            target_y = center_y + math.sin(1.5 * self.movement_timer) * (SCREEN_HEIGHT * 0.35)
+        # Apply pattern movement
+        pattern_x = self.target_x + offset_x
+        pattern_y = self.target_y + offset_y
 
-            # Smooth movement towards target
-            self.x += (target_x - self.x) * 0.05
-            self.y += (target_y - self.y) * 0.05
+        # Blend between entrance and pattern positions
+        blend_factor = min(1.0, (SCREEN_WIDTH - self.x) / (SCREEN_WIDTH - self.target_x))
+        self.y = self.y * (1 - blend_factor) + pattern_y * blend_factor
 
-            # Keep UFO in bounds
-            if self.x < self.radius:
-                self.x = self.radius
-            elif self.x > SCREEN_WIDTH - self.radius:
-                self.x = SCREEN_WIDTH - self.radius
-            if self.y < self.radius:
-                self.y = self.radius
-            elif self.y > SCREEN_HEIGHT - self.radius:
-                self.y = SCREEN_HEIGHT - self.radius
+        # Keep UFO in bounds
+        self.x = max(self.radius, min(self.x, SCREEN_WIDTH - self.radius))
+        self.y = max(self.radius, min(self.y, SCREEN_HEIGHT - self.radius))
 
-        # Update bullets with slower scroll speed
+        # Shoot at intervals once partially in screen
+        if self.x < SCREEN_WIDTH - self.radius and current_time - self.last_shot > self.shot_delay:
+            self.shoot(50, SCREEN_HEIGHT // 2)
+            self.last_shot = current_time
+
+        # Update bullets
         for bullet in self.bullets[:]:
-            # Bullets move left at half the pipe scroll speed
-            bullet['x'] += bullet['dx'] - PIPE_SPEED * 0.5
-            bullet['y'] += bullet['dy']
-            # Remove bullets that are off screen
-            if (bullet['x'] < -10 or bullet['x'] > SCREEN_WIDTH + 10 or
-                bullet['y'] < -10 or bullet['y'] > SCREEN_HEIGHT + 10):
+            bullet.update()
+            if bullet.is_off_screen():
                 self.bullets.remove(bullet)
 
-        # Shoot timer
-        self.shoot_timer += 1
-        if self.shoot_timer >= self.shoot_interval:
-            self.shoot_timer = 0
-            # Shoot two bullets with adjusted speeds
-            self.bullets.append({
-                'x': self.x,
-                'y': self.y,
-                'dx': -2,  # Slower left movement
-                'dy': 0
-            })
-            self.bullets.append({
-                'x': self.x,
-                'y': self.y,
-                'dx': -1,  # Slight left drift for down bullet
-                'dy': 3  # Down
-            })
+    def shoot(self, target_x, target_y):
+        """Create a new bullet aimed at the target"""
+        bullet = UFOBullet(self.x, self.y, target_x, target_y)
+        self.bullets.append(bullet)
+        ufo_shoot_sound.play()
 
     def draw(self, screen):
         # Flash effect
@@ -899,11 +876,32 @@ class UFO:
 
         # Draw bullets
         for bullet in self.bullets:
-            pygame.draw.circle(screen, (255, 0, 0),
-                             (int(bullet['x']), int(bullet['y'])), 3)
+            bullet.draw(screen)
+
+class UFOBullet:
+    def __init__(self, x, y, target_x, target_y):
+        self.x = x
+        self.y = y
+        # Calculate direction towards target
+        angle = math.atan2(target_y - y, target_x - x)
+        speed = 5
+        self.dx = math.cos(angle) * speed
+        self.dy = math.sin(angle) * speed
+        self.radius = 3
+        self.color = (255, 0, 0)  # Red bullets
+
+    def update(self):
+        self.x += self.dx
+        self.y += self.dy
+
+    def is_off_screen(self):
+        return (self.x < 0 or self.x > SCREEN_WIDTH or
+                self.y < 0 or self.y > SCREEN_HEIGHT)
+
+    def draw(self, screen):
+        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
 
     def get_rect(self):
-        """Get UFO's collision rectangle"""
         return pygame.Rect(self.x - self.radius, self.y - self.radius,
                          self.radius * 2, self.radius * 2)
 
@@ -1082,11 +1080,7 @@ def spawn_powerup(last_powerup, current_time):
 def spawn_ufo(last_ufo, current_time):
     # 30% chance to spawn UFO every 10 seconds
     if current_time - last_ufo >= 10000 and random.random() < 0.3:
-        ufo = UFO()
-        ufo.x = 400 + ufo.radius  # Start off screen to the right
-        ufo.y = random.randint(50, 200)  # Start higher up
-        ufo.dx = -2  # Move left
-        ufo.dy = 1   # Add constant downward movement
+        ufo = UFO()  # Use default initialization
         return ufo, current_time
     return None, last_ufo
 
@@ -1306,20 +1300,39 @@ def main():
                             high_score = max(score, high_score)
                             game_state = GAME_OVER
 
-            # Update UFOs
+            # Update UFOs and their bullets
             for ufo in ufos[:]:
                 ufo.update()
                 if ufo.x + ufo.radius < 0:
                     ufos.remove(ufo)
-                    if len(ufos) == 0:  # Stop presence sound when no UFOs left
+                    if len(ufos) == 0:
                         ufo_presence_sound.stop()
+
+                # Update UFO bullets and check collisions with player
+                for bullet in ufo.bullets[:]:
+                    bullet.update()
+                    # Remove bullets that go off screen
+                    if bullet.x < 0:
+                        ufo.bullets.remove(bullet)
+                        continue
+
+                    # Check collision with player
+                    bullet_rect = pygame.Rect(bullet.x - 3, bullet.y - 3, 6, 6)  # UFO bullet size
+                    bird_rect = bird.get_rect()
+                    if bullet_rect.colliderect(bird_rect):
+                        if bird.take_hit(current_time):
+                            game_over_sound.play()
+                            ufo_presence_sound.stop()
+                            high_score = max(score, high_score)
+                            game_state = GAME_OVER
+                        ufo.bullets.remove(bullet)
+
                 # Check collision with bird bullets
                 for bullet in bullets[:]:
-                    # Fix: Use bullet object attributes instead of dictionary access
                     dx = bullet.x - ufo.x
                     dy = bullet.y - ufo.y
                     distance = math.sqrt(dx * dx + dy * dy)
-                    if distance < ufo.radius + 5:  # 5 is bullet radius
+                    if distance < ufo.radius + 5:
                         bullets.remove(bullet)
                         ufo.health -= 1
                         ufo_hit_sound.play()
@@ -1330,11 +1343,11 @@ def main():
                             if len(ufos) == 0:
                                 ufo_presence_sound.stop()
                             # Spawn powerup
-                            powerup_type = random.choice([PowerUpType.SHIELD, PowerUpType.SPREAD, PowerUpType.LASER, PowerUpType.CHARGE])
+                            powerup_type = random.choice([PowerUpType.SHIELD, PowerUpType.SPREAD,
+                                                        PowerUpType.LASER, PowerUpType.CHARGE])
                             powerups.append(PowerUp(powerup_type, ufo.x, ufo.y))
                             break
 
-            # Add back the collision checks that were removed
             # Check gate collisions
             for bullet in bullets[:]:
                 for gate in gates:
@@ -1344,27 +1357,26 @@ def main():
                         if bullet in bullets:
                             bullets.remove(bullet)
                         break
-                else:
-                    # Check enemy collisions if bullet didn't hit a gate
-                    for bullet in bullets[:]:
-                        for enemy in enemies[:]:
-                            if bullet.get_rect().colliderect(enemy.get_rect()):
-                                if bullet.weapon_type == WeaponType.NUKE and bullet == bird.active_nuke:
-                                    # Auto-detonate nuke on enemy collision
-                                    should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates)
-                                    score += enemies_killed * 5  # Add points for kills
-                                    if should_reset:
-                                        bird.weapon = Weapon()
-                                    break
-                                else:
-                                    # Normal bullet collision
-                                    enemy_death_sound.play()
-                                    score += bullet.damage * 2
-                                    if bullet in bullets:
-                                        bullets.remove(bullet)
-                                    if enemy in enemies:
-                                        enemies.remove(enemy)
-                                    break
+
+                # Check enemy collisions if bullet didn't hit a gate
+                for enemy in enemies[:]:
+                    if bullet.get_rect().colliderect(enemy.get_rect()):
+                        if bullet.weapon_type == WeaponType.NUKE and bullet == bird.active_nuke:
+                            # Auto-detonate nuke on enemy collision
+                            should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates)
+                            score += enemies_killed * 5  # Add points for kills
+                            if should_reset:
+                                bird.weapon = Weapon()
+                            break
+                        else:
+                            # Normal bullet collision
+                            enemy_death_sound.play()
+                            score += bullet.damage * 2
+                            if bullet in bullets:
+                                bullets.remove(bullet)
+                            if enemy in enemies:
+                                enemies.remove(enemy)
+                            break
 
             # Check collisions with pipes
             for pipe in pipes:
