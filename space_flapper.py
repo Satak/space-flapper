@@ -1403,11 +1403,20 @@ def main():
             for bullet in bullets[:]:
                 for gate in gates:
                     if not gate.destroyed and bullet.get_rect().colliderect(gate.get_rect()):
-                        if gate.hit(bullet.damage, current_time):
-                            score += 5  # Bonus points for destroying a gate
-                        if bullet in bullets:
-                            bullets.remove(bullet)
-                        break
+                        if bullet.weapon_type == WeaponType.NUKE and bullet == bird.active_nuke:
+                            # Auto-detonate nuke on gate collision
+                            should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates)
+                            score += enemies_killed * 5  # Add points for kills
+                            if should_reset:
+                                bird.weapon = Weapon()
+                            break
+                        else:
+                            # Normal bullet collision
+                            if gate.hit(bullet.damage, current_time):
+                                score += 5  # Bonus points for destroying a gate
+                            if bullet in bullets:
+                                bullets.remove(bullet)
+                            break
 
                 # Check enemy collisions if bullet didn't hit a gate
                 for enemy in enemies[:]:
