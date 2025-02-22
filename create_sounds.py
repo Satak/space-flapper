@@ -312,7 +312,7 @@ def create_ufo_hit_sound(filename):
     envelope = np.exp(-t * 30)
     audio = audio * envelope
 
-    audio = audio / np.max(np.abs(audio)) 
+    audio = audio / np.max(np.abs(audio))
 
     # Normalize and save
     audio = np.clip(audio, -1, 1)
@@ -385,7 +385,7 @@ def create_title_music():
     sample_rate = 44100
     duration = 4.0  # 4 seconds of music
     t = np.linspace(0, duration, int(sample_rate * duration), False)
-    
+
     # Main melody (heroic theme)
     melody_notes = [
         (523.25, 0.5),    # C5 (0.5s)
@@ -396,44 +396,44 @@ def create_title_music():
         (659.25, 0.5),    # E5
         (523.25, 1.0),    # C5 (held longer)
     ]
-    
+
     # Create the melody
     melody = np.zeros_like(t)
     current_time = 0
-    
+
     for freq, dur in melody_notes:
         samples = int(dur * sample_rate)
         start = int(current_time * sample_rate)
         end = start + samples
         if end > len(t):
             break
-            
+
         # Add some envelope for smoother sound
         envelope = np.ones(samples)
         attack = int(0.05 * samples)
         decay = int(0.1 * samples)
         envelope[:attack] = np.linspace(0, 1, attack)
         envelope[-decay:] = np.linspace(1, 0, decay)
-        
+
         note = 0.3 * np.sin(2 * np.pi * freq * t[start:end])  # Main sine wave
         # Add harmonics for richer sound
         note += 0.15 * np.sin(4 * np.pi * freq * t[start:end])  # First harmonic
         note += 0.1 * np.sin(6 * np.pi * freq * t[start:end])   # Second harmonic
-        
+
         melody[start:end] += note * envelope
         current_time += dur
-    
+
     # Add a bass line
     bass_freq = 261.63  # C4
     bass = 0.2 * np.sin(2 * np.pi * bass_freq * t)
     bass *= np.exp(-t)  # Add decay
-    
+
     # Combine melody and bass
     audio = melody + bass
-    
+
     # Normalize
     audio = np.int16(audio * 32767)
-    
+
     # Save
     with wave.open('sounds/title_music.wav', 'wb') as wav_file:
         wav_file.setnchannels(1)  # Mono
@@ -446,40 +446,89 @@ def create_ufo_presence_sound():
     sample_rate = 44100
     duration = 2.0  # 2 second sound that will loop
     t = np.linspace(0, duration, int(sample_rate * duration), False)
-    
+
     # Base frequency for UFO sound (low pitch)
     base_freq = 80.0
-    
+
     # Create wobble effect with LFO (Low Frequency Oscillator)
     lfo_freq = 2.0  # 2 Hz wobble
     wobble = 10.0 * np.sin(2 * np.pi * lfo_freq * t)  # +/- 10 Hz wobble
-    
+
     # Combine base frequency with wobble
     frequency = base_freq + wobble
-    
+
     # Generate the sound with frequency modulation
     audio = 0.3 * np.sin(2 * np.pi * frequency * t)  # Main sine wave
     # Add some harmonics for richer sound
     audio += 0.15 * np.sin(4 * np.pi * frequency * t)  # First harmonic
     audio += 0.1 * np.sin(6 * np.pi * frequency * t)   # Second harmonic
-    
+
     # Add subtle noise for texture
     noise = np.random.normal(0, 0.05, len(t))
     audio += noise * 0.1
-    
+
     # Apply slow amplitude modulation
     amp_mod = 0.7 + 0.3 * np.sin(2 * np.pi * 0.5 * t)  # 0.5 Hz amplitude modulation
     audio *= amp_mod
-    
+
     # Normalize and convert to 16-bit integer
     audio = np.int16(audio * 32767)
-    
+
     # Save the sound
     with wave.open('sounds/ufo_presence.wav', 'wb') as wav_file:
         wav_file.setnchannels(1)  # Mono
         wav_file.setsampwidth(2)  # 2 bytes per sample
         wav_file.setframerate(sample_rate)
         wav_file.writeframes(audio.tobytes())
+
+def create_explosion_sound():
+    """Create a powerful explosion sound effect"""
+    # Parameters for explosion sound
+    duration = 1.0  # 1 second
+    sample_rate = 44100
+    num_samples = int(duration * sample_rate)
+
+    # Create initial burst of noise
+    noise = np.random.uniform(-0.8, 0.8, num_samples)
+
+    # Create low frequency rumble
+    t = np.linspace(0, duration, num_samples)
+    bass_freq = 80  # Low frequency for the rumble
+    rumble = np.sin(2 * np.pi * bass_freq * t) * 0.5
+
+    # Combine noise and rumble
+    explosion = noise + rumble
+
+    # Apply envelope
+    attack_time = 0.02  # Very quick attack
+    decay_time = 0.8   # Long decay
+
+    attack_samples = int(attack_time * sample_rate)
+    decay_samples = int(decay_time * sample_rate)
+
+    # Create envelope
+    envelope = np.ones(num_samples)
+    # Attack phase
+    envelope[:attack_samples] = np.linspace(0, 1, attack_samples)
+    # Decay phase
+    decay_start = attack_samples
+    envelope[decay_start:] = np.linspace(1, 0, num_samples - decay_start)
+
+    # Apply envelope to sound
+    explosion = explosion * envelope
+
+    # Add some distortion for more impact
+    explosion = np.clip(explosion * 1.5, -1, 1)
+
+    # Convert to 16-bit integer samples
+    explosion = np.int16(explosion * 32767)
+
+    # Save the sound
+    with wave.open('sounds/explosion.wav', 'wb') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(explosion.tobytes())
 
 def main():
     try:
@@ -498,6 +547,7 @@ def main():
         create_ufo_shoot_sound('sounds/ufo_shoot.wav', volume=0.3)  # UFO shoot sound at 30% volume
         create_title_music()  # Title screen music
         create_ufo_presence_sound()  # UFO presence sound
+        create_explosion_sound()
         print("Successfully created sound files!")
     except Exception as e:
         print(f"Error creating sounds: {str(e)}")

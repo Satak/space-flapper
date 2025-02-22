@@ -29,6 +29,7 @@ class WeaponType(Enum):
     LASER = auto()
     CHARGE = auto()
     SHIELD = auto()
+    NUKE = auto()  # Add NUKE type
 
 # Power-up Types
 class PowerUpType(Enum):
@@ -36,6 +37,7 @@ class PowerUpType(Enum):
     SPREAD = auto()
     LASER = auto()
     CHARGE = auto()
+    NUKE = auto()  # Add NUKE type
 
 # Colors
 BLACK = (0, 0, 0)
@@ -70,6 +72,9 @@ class Weapon:
         elif type == WeaponType.CHARGE:
             self.ammo = 20
             self.cooldown = 800
+        elif type == WeaponType.NUKE:
+            self.ammo = 3  # Start with 3 nukes
+            self.cooldown = 1000  # Longer cooldown for nukes
         self.last_shot_time = 0
 
     def start_charging(self, current_time):
@@ -157,9 +162,6 @@ class Weapon:
             self.charge_level = 0
             return bullets, self.ammo == 0
 
-        self.charge_level = 0
-        return [], False
-
     def shoot(self, x, y, current_time):
         if self.type == WeaponType.CHARGE:
             return [], False  # Charge weapon only shoots on release
@@ -189,75 +191,47 @@ class Weapon:
         return [], False
 
 class Bullet:
-    def __init__(self, x, y, weapon_type, charge_level=0, angle=0):
+    def __init__(self, x, y, weapon_type, charge_level=0, angle=0, velocity=None):
         self.x = x
         self.y = y
-        self.speed = 10
-        self.angle = math.radians(angle)  # Convert angle to radians
         self.weapon_type = weapon_type
+        self.angle = math.radians(angle)
 
         # Set bullet properties based on weapon type
-        if weapon_type == WeaponType.DEFAULT:
-            self.color = (0, 128, 255)  # Light blue
-            self.width = 16  # Length of laser line
-            self.height = 6  # Thickness of laser line
-            self.damage = 1  # Default damage
-        elif weapon_type == WeaponType.SPREAD:
-            self.color = (255, 0, 255)  # Magenta
-            self.radius = 10
-            self.damage = 1  # Spread bullets do normal damage
-        elif weapon_type == WeaponType.LASER:
-            self.color = (0, 255, 255)  # Cyan
-            self.width = 20  # Longer laser
-            self.height = 3  # Slightly thicker
-            self.damage = 2  # Laser does double damage
-        else:  # CHARGE
-            self.color = (255, 255, 0)  # Yellow
-            self.radius = 16
-            charge_scale = charge_level / 100.0
-            self.damage = 3 + int(charge_scale * 2)  # Damage scales with charge
-
-        # Calculate velocity components based on angle
-        self.vx = self.speed * math.cos(self.angle)
-        self.vy = self.speed * math.sin(self.angle)
+        if weapon_type == WeaponType.NUKE:
+            self.velocity = 3 if velocity is None else velocity
+            self.radius = 5
+            self.damage = 100
+            self.color = (255, 0, 0)
+            self.trail_color = (255, 165, 0)
+        else:
+            self.velocity = 10 if velocity is None else velocity
+            self.width = 10
+            self.height = 5
+            self.damage = 1
 
     def update(self):
-        # Update position based on angle
-        self.x += self.vx
-        self.y += self.vy
+        self.x += self.velocity * math.cos(self.angle)
+        self.y += self.velocity * math.sin(self.angle)
+
+    def draw(self, screen):
+        if self.weapon_type == WeaponType.NUKE:
+            # Draw nuke missile with trail
+            pygame.draw.circle(screen, self.color,
+                             (int(self.x), int(self.y)), self.radius)
+            # Add orange trail
+            for i in range(3):
+                trail_x = self.x - (i * 5)
+                trail_radius = self.radius - (i * 1)
+                if trail_radius > 0:
+                    pygame.draw.circle(screen, self.trail_color,
+                                     (int(trail_x), int(self.y)), trail_radius)
+        else:
+            pygame.draw.rect(screen, (0, 255, 0),
+                           (int(self.x), int(self.y), self.width, self.height))
 
     def is_off_screen(self):
         return self.x > 400 or self.x < 0 or self.y > 600 or self.y < 0
-
-    def draw(self, screen):
-        if self.weapon_type == WeaponType.DEFAULT:
-            # Draw as a horizontal laser line
-            end_x = self.x + self.width
-            pygame.draw.line(screen, self.color,
-                           (self.x, self.y),
-                           (end_x, self.y),
-                           self.height)
-            # Add a brighter core to the laser
-            pygame.draw.line(screen, (128, 192, 255),  # Lighter blue core
-                           (self.x, self.y),
-                           (end_x, self.y),
-                           1)
-        elif self.weapon_type == WeaponType.SPREAD:
-            pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
-        elif self.weapon_type == WeaponType.LASER:
-            # Draw as a longer laser line
-            end_x = self.x + self.width
-            pygame.draw.line(screen, self.color,
-                           (self.x, self.y),
-                           (end_x, self.y),
-                           self.height)
-            # Add a white core to the laser
-            pygame.draw.line(screen, (255, 255, 255),
-                           (self.x, self.y),
-                           (end_x, self.y),
-                           1)
-        else:  # CHARGE
-            pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
 
     def get_rect(self):
         """Get bullet's collision rectangle"""
@@ -285,6 +259,8 @@ class Bird:
         self.last_hit_time = 0
         self.invincible_duration = 1000  # 1 second of invincibility after hit
         self.weapon = Weapon()
+        self.active_nuke = None
+        self.explosion = None  # Add this line
 
         # Invincibility attributes
         self.invincible = False
@@ -314,6 +290,8 @@ class Bird:
             1: (255, 165, 0)     # Orange for 1 shield (matching player color)
         }
 
+        self.nuke_ammo = 3  # Start with 3 nukes
+
     def reset(self):
         self.x = 50
         self.y = SCREEN_HEIGHT // 2
@@ -326,6 +304,8 @@ class Bird:
         # Reset color when game restarts
         self.color = self.get_color()
         self.ear_color = self.color
+        self.active_nuke = None
+        self.explosion = None  # Reset explosion
 
     def flap(self):
         self.velocity = -8  # Negative velocity makes the bird go up
@@ -456,11 +436,33 @@ class Bird:
             ammo_surface = font.render(ammo_text, True, (255, 255, 255))
             screen.blit(ammo_surface, (10, 40))
 
+            # Draw weapon type
+            weapon_text = f"Weapon: {self.weapon.type.name}"
+            weapon_surface = font.render(weapon_text, True, (255, 255, 255))
+            screen.blit(weapon_surface, (10, 70))
+
         # Draw score
         font = pygame.font.Font(None, 36)
         score_text = f"Score: {score}"
         score_surface = font.render(score_text, True, (255, 255, 255))
         screen.blit(score_surface, (10, 10))
+
+        # Remove the standalone nuke counter since it's now part of the weapon system
+        # Only show nuke ammo if we have the nuke weapon
+        if self.weapon.type == WeaponType.NUKE:
+            nuke_text = font.render(f"Nukes: {self.weapon.ammo}", True, (255, 255, 255))
+            screen.blit(nuke_text, (10, 50))
+
+        # Draw active nuke and its trail
+        if self.active_nuke:
+            self.active_nuke.draw(screen)
+
+        # Draw explosion if active
+        if self.explosion:
+            self.explosion.draw(screen)
+            self.explosion.update()
+            if self.explosion.is_finished:
+                self.explosion = None
 
     def shoot(self, current_time):
         if current_time - self.weapon.last_shot_time >= self.weapon.cooldown:
@@ -468,9 +470,14 @@ class Bird:
             bullets = []
 
             if self.weapon.ammo > 0:
-                if self.weapon.type == WeaponType.DEFAULT:
+                if self.weapon.type == WeaponType.NUKE and not self.active_nuke:
+                    nuke = Bullet(self.x + self.radius * 2, self.y, WeaponType.NUKE, velocity=3)
+                    self.active_nuke = nuke
+                    bullets.append(nuke)
+                    return bullets, False
+                elif self.weapon.type == WeaponType.DEFAULT:
                     bullets.append(Bullet(self.x, self.y, self.weapon.type))
-                    shoot_sound.play()  # Play default shoot sound
+                    shoot_sound.play()
                 elif self.weapon.type == WeaponType.SPREAD:
                     for angle in [-15, 0, 15]:
                         bullets.append(Bullet(self.x, self.y, self.weapon.type, angle=angle))
@@ -483,7 +490,7 @@ class Bird:
                     self.weapon.ammo -= 1
                     should_reset = self.weapon.ammo <= 0
                     if should_reset:
-                        power_up_sound.play()  # Play sound when weapon runs out
+                        power_up_sound.play()
                     return bullets, should_reset
 
             return bullets, False
@@ -504,6 +511,59 @@ class Bird:
         return pygame.Rect(self.x - collision_radius, self.y - collision_radius,
                          collision_radius * 2, collision_radius * 2)
 
+    def launch_nuke(self):
+        if not self.active_nuke and self.weapon.ammo > 0:
+            nuke = Bullet(self.x + self.radius * 2, self.y, WeaponType.NUKE, velocity=3)
+            self.active_nuke = nuke
+
+    def detonate_nuke(self, enemies, bullets, screen, ufos, gates):
+        if self.active_nuke and self.active_nuke in bullets:
+            # Create explosion animation
+            self.explosion = Explosion(self.active_nuke.x, self.active_nuke.y)
+            explosion_sound.play()
+
+            # Apply damage to everything in explosion radius
+            nuke_pos = (self.active_nuke.x, self.active_nuke.y)
+            enemies_killed = 0
+
+            # Kill ALL enemies within the massive blast radius
+            for enemy in enemies[:]:
+                distance = math.sqrt((enemy.x - nuke_pos[0])**2 +
+                                   (enemy.y - nuke_pos[1])**2)
+                if distance <= self.explosion.radius:
+                    enemies.remove(enemy)
+                    enemies_killed += 1
+                    enemy_death_sound.play()
+
+            # Destroy UFOs in blast radius
+            for ufo in ufos[:]:
+                distance = math.sqrt((ufo.x - nuke_pos[0])**2 +
+                                   (ufo.y - nuke_pos[1])**2)
+                if distance <= self.explosion.radius:
+                    ufos.remove(ufo)
+                    enemies_killed += 2  # More points for UFO kills
+                    ufo_death_sound.play()
+                    if len(ufos) == 0:
+                        ufo_presence_sound.stop()
+
+            # Destroy gates in blast radius
+            for gate in gates[:]:
+                if abs(gate.x - nuke_pos[0]) <= self.explosion.radius:
+                    if not gate.destroyed:
+                        gate.destroyed = True
+                        enemies_killed += 1  # Points for destroying gates
+
+            # Remove the nuke
+            bullets.remove(self.active_nuke)
+            self.active_nuke = None
+
+            # Decrease ammo after successful detonation
+            self.weapon.ammo -= 1
+            if self.weapon.ammo <= 0:
+                return True, enemies_killed
+            return False, enemies_killed
+        return False, 0
+
 class PowerUp:
     def __init__(self, type, x, y):
         self.type = type
@@ -520,8 +580,10 @@ class PowerUp:
             self.color = (255, 0, 255)    # Magenta for spread gun
         elif self.type == PowerUpType.LASER:
             self.color = (0, 255, 255)    # Cyan for fast laser
-        else:  # CHARGE
+        elif self.type == PowerUpType.CHARGE:
             self.color = (255, 255, 0)    # Yellow for charge
+        elif self.type == PowerUpType.NUKE:
+            self.color = (255, 165, 0)    # Orange for nuke
 
     def update(self):
         # Move with scroll speed like pipes
@@ -543,14 +605,15 @@ class PowerUp:
                          collision_size * 2, collision_size * 2)
 
     def collect(self, bird):
-        power_up_sound.play()  # Play powerup collection sound
+        power_up_sound.play()
         if self.type == PowerUpType.SHIELD:
             if bird.shields < bird.max_shields:
                 bird.shields += 1
-                shield_recharge_sound.play()  # Play shield recharge sound
+                shield_recharge_sound.play()
                 bird.update_color()
         else:
-            bird.weapon = Weapon(WeaponType[self.type.name])  # Convert PowerUpType to WeaponType
+            weapon_type = WeaponType[self.type.name]
+            bird.weapon = Weapon(weapon_type)
 
 class Enemy:
     def __init__(self):
@@ -784,6 +847,48 @@ class UFO:
         return pygame.Rect(self.x - self.radius, self.y - self.radius,
                          self.radius * 2, self.radius * 2)
 
+class Explosion:
+    def __init__(self, x, y, radius=400):  # Doubled the radius from 200 to 400
+        self.x = x
+        self.y = y
+        self.radius = radius
+        self.current_radius = 0
+        self.max_alpha = 200  # Increased alpha for more visible explosion
+        self.current_alpha = self.max_alpha
+        self.growth_speed = 20  # Faster growth
+        self.fade_speed = 3  # Slower fade for longer lasting explosion
+        self.is_finished = False
+
+    def update(self):
+        # Grow explosion
+        if self.current_radius < self.radius:
+            self.current_radius += self.growth_speed
+        else:
+            # Start fading
+            self.current_alpha -= self.fade_speed
+            if self.current_alpha <= 0:
+                self.is_finished = True
+
+    def draw(self, screen):
+        # Draw outer explosion circle (orange)
+        outer_surface = pygame.Surface((self.radius * 2, self.radius * 2), pygame.SRCALPHA)
+        pygame.draw.circle(outer_surface, (255, 165, 0, self.current_alpha),
+                         (self.radius, self.radius), self.current_radius)
+
+        # Draw inner explosion circle (bright yellow)
+        inner_radius = self.current_radius * 0.7
+        pygame.draw.circle(outer_surface, (255, 255, 200, self.current_alpha),
+                         (self.radius, self.radius), inner_radius)
+
+        # Draw core (white)
+        core_radius = self.current_radius * 0.3
+        pygame.draw.circle(outer_surface, (255, 255, 255, self.current_alpha),
+                         (self.radius, self.radius), core_radius)
+
+        # Draw to screen
+        screen.blit(outer_surface,
+                   (self.x - self.radius, self.y - self.radius))
+
 def get_level_info(score):
     """Get level info based on score"""
     level = score // 100
@@ -801,7 +906,7 @@ def get_level_info(score):
     elif level == 3:
         bg_color = YELLOW
     elif level == 4:
-        bg_color = MAGENTA
+        bg_color = PURPLE
     else:
         bg_color = RED
 
@@ -921,7 +1026,8 @@ def load_sounds():
     sound_files = [
         'shoot', 'laser', 'spread', 'hit', 'game_over', 'power_up',
         'enemy_death', 'charge', 'shield_recharge', 'ufo_hit',
-        'ufo_death', 'ufo_shoot', 'title_music', 'ufo_presence'
+        'ufo_death', 'ufo_shoot', 'title_music', 'ufo_presence',
+        'explosion'  # Add explosion sound to the list
     ]
     for file in sound_files:
         try:
@@ -940,7 +1046,8 @@ def spawn_powerup(last_powerup, current_time):
             PowerUpType.SHIELD,
             PowerUpType.SPREAD,
             PowerUpType.LASER,
-            PowerUpType.CHARGE
+            PowerUpType.CHARGE,
+            PowerUpType.NUKE,
         ])
         return PowerUp(powerup_type, x, y), current_time
     return None, last_powerup
@@ -957,7 +1064,7 @@ def spawn_ufo(last_ufo, current_time):
     return None, last_ufo
 
 def main():
-    global shoot_sound, laser_sound, spread_sound, hit_sound, shield_up_sound, power_up_sound, game_over_sound, enemy_death_sound, charge_sound, shield_recharge_sound, ufo_hit_sound, ufo_death_sound, ufo_shoot_sound, title_music, ufo_presence_sound
+    global shoot_sound, laser_sound, spread_sound, hit_sound, shield_up_sound, power_up_sound, game_over_sound, enemy_death_sound, charge_sound, shield_recharge_sound, ufo_hit_sound, ufo_death_sound, ufo_shoot_sound, title_music, ufo_presence_sound, explosion_sound
 
     pygame.init()
 
@@ -973,20 +1080,22 @@ def main():
 
     try:
         # Load all sounds without testing them
-        shoot_sound = pygame.mixer.Sound("sounds/shoot.wav")
-        laser_sound = pygame.mixer.Sound("sounds/laser.wav")
-        spread_sound = pygame.mixer.Sound("sounds/spread.wav")
-        hit_sound = pygame.mixer.Sound("sounds/hit.wav")
-        power_up_sound = pygame.mixer.Sound("sounds/power_up.wav")
-        game_over_sound = pygame.mixer.Sound("sounds/game_over.wav")
-        enemy_death_sound = pygame.mixer.Sound("sounds/enemy_death.wav")
-        charge_sound = pygame.mixer.Sound("sounds/charge.wav")
-        shield_recharge_sound = pygame.mixer.Sound("sounds/shield_recharge.wav")
-        ufo_hit_sound = pygame.mixer.Sound("sounds/ufo_hit.wav")
-        ufo_death_sound = pygame.mixer.Sound("sounds/ufo_death.wav")
-        ufo_shoot_sound = pygame.mixer.Sound("sounds/ufo_shoot.wav")
-        title_music = pygame.mixer.Sound("sounds/title_music.wav")
-        ufo_presence_sound = pygame.mixer.Sound("sounds/ufo_presence.wav")
+        sounds = load_sounds()
+        shoot_sound = sounds['shoot']
+        laser_sound = sounds['laser']
+        spread_sound = sounds['spread']
+        hit_sound = sounds['hit']
+        power_up_sound = sounds['power_up']
+        game_over_sound = sounds['game_over']
+        enemy_death_sound = sounds['enemy_death']
+        charge_sound = sounds['charge']
+        shield_recharge_sound = sounds['shield_recharge']
+        ufo_hit_sound = sounds['ufo_hit']
+        ufo_death_sound = sounds['ufo_death']
+        ufo_shoot_sound = sounds['ufo_shoot']
+        title_music = sounds['title_music']
+        ufo_presence_sound = sounds['ufo_presence']
+        explosion_sound = sounds['explosion']
 
         # Set volumes
         shoot_sound.set_volume(0.4)
@@ -1010,35 +1119,6 @@ def main():
         print(f"Error loading sounds: {str(e)}")
         print("Running without sound.")
         shoot_sound = laser_sound = spread_sound = hit_sound = shield_up_sound = power_up_sound = game_over_sound = enemy_death_sound = charge_sound = shield_recharge_sound = ufo_hit_sound = ufo_death_sound = ufo_shoot_sound = title_music = ufo_presence_sound = empty_sound
-
-    def Bird_shoot(self, current_time):
-        if current_time - self.weapon.last_shot_time >= self.weapon.cooldown:
-            self.weapon.last_shot_time = current_time
-            bullets = []
-
-            if self.weapon.ammo > 0:
-                if self.weapon.type == WeaponType.DEFAULT:
-                    bullets.append(Bullet(self.x, self.y, self.weapon.type))
-                    shoot_sound.play()  # Play default shoot sound
-                elif self.weapon.type == WeaponType.SPREAD:
-                    for angle in [-15, 0, 15]:
-                        bullets.append(Bullet(self.x, self.y, self.weapon.type, angle=angle))
-                    spread_sound.play()
-                elif self.weapon.type == WeaponType.LASER:
-                    bullets.append(Bullet(self.x, self.y, self.weapon.type))
-                    laser_sound.play()
-
-                if self.weapon.type != WeaponType.DEFAULT:
-                    self.weapon.ammo -= 1
-                    should_reset = self.weapon.ammo <= 0
-                    if should_reset:
-                        power_up_sound.play()  # Play sound when weapon runs out
-                    return bullets, should_reset
-
-            return bullets, False
-        return [], False
-
-    Bird.shoot = Bird_shoot
 
     game_state = MENU
     bird, pipes, enemies, bullets, powerups, gates, ufos, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo = reset_game()
@@ -1080,13 +1160,25 @@ def main():
                     if bird.weapon.type == WeaponType.CHARGE:
                         bird.start_charging(current_time)
                         charging_started = True
+                    elif bird.weapon.type == WeaponType.NUKE and bird.active_nuke:
+                        # Only handle detonation on key press
+                        should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates)
+                        score += enemies_killed * 5  # Add 5 points per enemy killed
+                        if should_reset:
+                            bird.weapon = Weapon()
+                    else:
+                        # Handle all other weapons including nuke launch
+                        new_bullets, should_reset = bird.shoot(current_time)
+                        bullets.extend(new_bullets)
+                        if should_reset:
+                            bird.weapon = Weapon()
 
             if event.type == pygame.KEYUP:
                 if event.key == pygame.K_x and charging_started:
                     new_bullets, should_reset = bird.release_charge(current_time)
                     bullets.extend(new_bullets)
                     if should_reset:
-                        bird.weapon = Weapon()  # Reset to default weapon when ammo runs out
+                        bird.weapon = Weapon()
                     charging_started = False
 
         if game_state == PLAYING:
@@ -1095,13 +1187,18 @@ def main():
 
             # Handle shooting
             if keys[pygame.K_x]:
-                if not charging_started:  # Normal weapons shoot normally
+                if bird.weapon.type == WeaponType.CHARGE and not charging_started:
+                    bird.start_charging(current_time)
+                    charging_started = True
+                elif not charging_started and bird.weapon.type != WeaponType.NUKE:
                     new_bullets, should_reset = bird.shoot(current_time)
                     bullets.extend(new_bullets)
                     if should_reset:
-                        bird.weapon = Weapon()  # Reset to default weapon when ammo runs out
-                else:  # Charge weapon is charging
-                    bird.update_charge(current_time)
+                        bird.weapon = Weapon()
+
+            # Update charge weapon
+            if charging_started:
+                bird.update_charge(current_time)
 
             # Spawn new pipes
             if current_time - last_pipe > PIPE_FREQUENCY:
@@ -1186,56 +1283,63 @@ def main():
                         ufo_presence_sound.stop()
                 # Check collision with bird bullets
                 for bullet in bullets[:]:
+                    # Fix: Use bullet object attributes instead of dictionary access
                     dx = bullet.x - ufo.x
                     dy = bullet.y - ufo.y
                     distance = math.sqrt(dx * dx + dy * dy)
                     if distance < ufo.radius + 5:  # 5 is bullet radius
                         bullets.remove(bullet)
                         ufo.health -= 1
-                        ufo_hit_sound.play()  # Play UFO hit sound
+                        ufo_hit_sound.play()
                         if ufo.health <= 0:
                             ufos.remove(ufo)
                             score += 10
-                            ufo_death_sound.play()  # Play UFO death sound
-                            if len(ufos) == 0:  # Stop presence sound when last UFO dies
+                            ufo_death_sound.play()
+                            if len(ufos) == 0:
                                 ufo_presence_sound.stop()
                             # Spawn powerup
                             powerup_type = random.choice([PowerUpType.SHIELD, PowerUpType.SPREAD, PowerUpType.LASER, PowerUpType.CHARGE])
                             powerups.append(PowerUp(powerup_type, ufo.x, ufo.y))
                             break
 
-            # Update bullets and check collisions
+            # Add back the collision checks that were removed
+            # Check gate collisions
             for bullet in bullets[:]:
-                bullet.update()
-                if bullet.x > SCREEN_WIDTH:
-                    bullets.remove(bullet)
+                for gate in gates:
+                    if not gate.destroyed and bullet.get_rect().colliderect(gate.get_rect()):
+                        if gate.hit(bullet.damage, current_time):
+                            score += 5  # Bonus points for destroying a gate
+                        if bullet in bullets:
+                            bullets.remove(bullet)
+                        break
                 else:
-                    # Check gate collisions first
-                    for gate in gates:
-                        if not gate.destroyed and bullet.get_rect().colliderect(gate.get_rect()):
-                            if gate.hit(bullet.damage, current_time):
-                                score += 5  # Bonus points for destroying a gate
-                            if bullet in bullets:
-                                bullets.remove(bullet)
-                            break
-                    else:
-                        # Check enemy collisions if bullet didn't hit a gate
+                    # Check enemy collisions if bullet didn't hit a gate
+                    for bullet in bullets[:]:
                         for enemy in enemies[:]:
                             if bullet.get_rect().colliderect(enemy.get_rect()):
-                                enemy_death_sound.play()
-                                score += bullet.damage * 2
-                                if bullet in bullets:
-                                    bullets.remove(bullet)
-                                if enemy in enemies:
-                                    enemies.remove(enemy)
-                                break
+                                if bullet.weapon_type == WeaponType.NUKE and bullet == bird.active_nuke:
+                                    # Auto-detonate nuke on enemy collision
+                                    should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates)
+                                    score += enemies_killed * 5  # Add points for kills
+                                    if should_reset:
+                                        bird.weapon = Weapon()
+                                    break
+                                else:
+                                    # Normal bullet collision
+                                    enemy_death_sound.play()
+                                    score += bullet.damage * 2
+                                    if bullet in bullets:
+                                        bullets.remove(bullet)
+                                    if enemy in enemies:
+                                        enemies.remove(enemy)
+                                    break
 
             # Check collisions with pipes
             for pipe in pipes:
                 if check_collision(bird, pipe):
                     if bird.take_hit(current_time):
                         game_over_sound.play()
-                        ufo_presence_sound.stop()  # Stop UFO sound when player dies
+                        ufo_presence_sound.stop()
                         high_score = max(score, high_score)
                         game_state = GAME_OVER
 
@@ -1245,23 +1349,16 @@ def main():
                 if bird_rect.colliderect(enemy.get_rect()):
                     if bird.take_hit(current_time):
                         game_over_sound.play()
-                        ufo_presence_sound.stop()  # Stop UFO sound when player dies
+                        ufo_presence_sound.stop()
                         high_score = max(score, high_score)
                         game_state = GAME_OVER
 
-            # Check collisions with UFO bullets
-            for ufo in ufos:
-                for bullet in ufo.bullets[:]:
-                    dx = bullet['x'] - bird.x
-                    dy = bullet['y'] - bird.y
-                    distance = math.sqrt(dx * dx + dy * dy)
-                    if distance < bird.radius + 3:  # 3 is UFO bullet radius
-                        if bird.take_hit(current_time):
-                            game_over_sound.play()
-                            ufo_presence_sound.stop()  # Stop UFO sound when player dies
-                            high_score = max(score, high_score)
-                            game_state = GAME_OVER
-                        ufo.bullets.remove(bullet)
+            # Update bullets
+            for bullet in bullets[:]:  # Use slice copy to safely modify list while iterating
+                bullet.update()  # Move bullets
+                # Only remove non-nuke bullets that go off screen
+                if bullet.x > SCREEN_WIDTH and bullet != bird.active_nuke:
+                    bullets.remove(bullet)
 
         # Draw
         screen.fill(bg_color)  # Use level background color
