@@ -495,12 +495,6 @@ class Bird:
         score_surface = font.render(score_text, True, (255, 255, 255))
         screen.blit(score_surface, (10, 10))
 
-        # Remove the standalone nuke counter since it's now part of the weapon system
-        # Only show nuke ammo if we have the nuke weapon
-        if self.weapon.type == WeaponType.NUKE:
-            nuke_text = font.render(f"Nukes: {self.weapon.ammo}", True, (255, 255, 255))
-            screen.blit(nuke_text, (10, 50))
-
         # Draw active nuke and its trail
         if self.active_nuke:
             self.active_nuke.draw(screen)
@@ -682,25 +676,34 @@ class Enemy:
         self.pupil_size = 4  # Size of the black pupil
         self.eye_spacing = 8  # Distance between eyes
 
+        # Pupil animation properties
+        self.pupil_offset = 0
+        self.pupil_direction = 1  # 1 for right, -1 for left
+        self.pupil_max_offset = 2  # Maximum pixels to move left/right
+        self.pupil_speed = 0.05  # Speed of pupil movement
+
     def update(self):
         self.x -= self.speed
+
+        # Update pupil animation
+        self.pupil_offset += self.pupil_speed * self.pupil_direction
+        if abs(self.pupil_offset) >= self.pupil_max_offset:
+            self.pupil_direction *= -1  # Reverse direction at max offset
 
     def draw(self, screen):
         # Draw the main body
         pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.size)
 
         # Draw eyes
-        eye_spacing = 8 if self.color == (255, 0, 0) else 4  # Wider spacing for red enemies
+        eye_spacing = 8
         pygame.draw.circle(screen, self.eye_color, (int(self.x - eye_spacing), int(self.y - 2)), self.eye_size)
         pygame.draw.circle(screen, self.eye_color, (int(self.x + eye_spacing), int(self.y - 2)), self.eye_size)
 
-        # Draw pupils (black part)
-        # Make pupils look slightly towards the bird (left)
-        pupil_offset = 1
+        # Draw animated pupils
         pygame.draw.circle(screen, self.pupil_color,
-                         (int(self.x - eye_spacing - pupil_offset), int(self.y - 2)), self.pupil_size)
+                         (int(self.x - eye_spacing + self.pupil_offset), int(self.y - 2)), self.pupil_size)
         pygame.draw.circle(screen, self.pupil_color,
-                         (int(self.x + eye_spacing - pupil_offset), int(self.y - 2)), self.pupil_size)
+                         (int(self.x + eye_spacing + self.pupil_offset), int(self.y - 2)), self.pupil_size)
 
     def get_rect(self):
         """Get enemy's collision rectangle, slightly smaller than visual size"""
@@ -1041,69 +1044,6 @@ def draw_message(screen, text, y_offset=0):
     text_rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + y_offset)
     screen.blit(text_surface, text_rect)
 
-def show_title_screen(screen, sounds):
-    """Show title screen with all instructions"""
-    # Start playing title music
-    if 'title_music' in sounds:
-        sounds['title_music'].play(-1)  # -1 means loop indefinitely
-
-    # Fonts
-    title_font = pygame.font.Font(None, 74)
-    subtitle_font = pygame.font.Font(None, 48)
-    instruction_font = pygame.font.Font(None, 36)
-
-    # Title
-    title_text = title_font.render('Space Flapper', True, (255, 255, 255))
-    title_rect = title_text.get_rect(center=(400, 150))
-
-    # Instructions list
-    instructions = [
-        ('Controls:', None),
-        ('SPACE', 'Flap & Shoot'),
-        ('X', 'Change Weapon'),
-        ('Power-ups:', None),
-        ('Green', 'Shield'),
-        ('Magenta', 'Spread Gun'),
-        ('Cyan', 'Fast Laser'),
-        ('Yellow', 'Charge Shot')
-    ]
-
-    # Render instructions
-    instruction_surfaces = []
-    y_pos = 250
-    for text, desc in instructions:
-        if desc is None:  # Header
-            rendered_text = instruction_font.render(text, True, (255, 255, 0))  # Yellow headers
-        else:  # Regular instruction
-            rendered_text = instruction_font.render(f"{text} - {desc}", True, (255, 255, 255))
-        rect = rendered_text.get_rect(center=(400, y_pos))
-        instruction_surfaces.append((rendered_text, rect))
-        y_pos += 40
-
-    # Start prompt
-    start_text = subtitle_font.render('Press SPACE to Start!', True, (255, 255, 0))
-    start_rect = start_text.get_rect(center=(400, 520))
-
-    # Main loop
-    waiting = True
-    while waiting:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                waiting = False
-                if 'title_music' in sounds:
-                    sounds['title_music'].stop()
-
-        # Draw everything
-        screen.fill((0, 0, 0))
-        screen.blit(title_text, title_rect)
-        for text, rect in instruction_surfaces:
-            screen.blit(text, rect)
-        screen.blit(start_text, start_rect)
-        pygame.display.flip()
-
 def load_sounds():
     """Load all game sounds"""
     sounds = {}
@@ -1151,9 +1091,8 @@ def main():
     global shoot_sound, laser_sound, spread_sound, hit_sound, shield_up_sound, power_up_sound, game_over_sound, enemy_death_sound, charge_sound, shield_recharge_sound, ufo_hit_sound, ufo_death_sound, ufo_shoot_sound, title_music, ufo_presence_sound, explosion_sound
 
     pygame.init()
-
-    pygame.mixer.quit()  # Quit any existing mixer
-    pygame.mixer.pre_init(44100, -16, 2, 1024)  # Increased buffer size
+    pygame.mixer.quit()
+    pygame.mixer.pre_init(44100, -16, 2, 1024)
     pygame.mixer.init()
 
     print("Sound system status:")
@@ -1163,23 +1102,25 @@ def main():
     empty_sound = pygame.mixer.Sound(buffer=b'')
 
     try:
-        # Load all sounds without testing them
+        # Load all sounds
         sounds = load_sounds()
-        shoot_sound = sounds['shoot']
-        laser_sound = sounds['laser']
-        spread_sound = sounds['spread']
-        hit_sound = sounds['hit']
-        power_up_sound = sounds['power_up']
-        game_over_sound = sounds['game_over']
-        enemy_death_sound = sounds['enemy_death']
-        charge_sound = sounds['charge']
-        shield_recharge_sound = sounds['shield_recharge']
-        ufo_hit_sound = sounds['ufo_hit']
-        ufo_death_sound = sounds['ufo_death']
-        ufo_shoot_sound = sounds['ufo_shoot']
-        title_music = sounds['title_music']
-        ufo_presence_sound = sounds['ufo_presence']
-        explosion_sound = sounds['explosion']
+
+        # Assign sounds from the dictionary
+        shoot_sound = sounds.get('shoot', empty_sound)
+        laser_sound = sounds.get('laser', empty_sound)
+        spread_sound = sounds.get('spread', empty_sound)
+        hit_sound = sounds.get('hit', empty_sound)
+        power_up_sound = sounds.get('power_up', empty_sound)
+        game_over_sound = sounds.get('game_over', empty_sound)
+        enemy_death_sound = sounds.get('enemy_death', empty_sound)
+        charge_sound = sounds.get('charge', empty_sound)
+        shield_recharge_sound = sounds.get('shield_recharge', empty_sound)
+        ufo_hit_sound = sounds.get('ufo_hit', empty_sound)
+        ufo_death_sound = sounds.get('ufo_death', empty_sound)
+        ufo_shoot_sound = sounds.get('ufo_shoot', empty_sound)
+        title_music = sounds.get('title_music', empty_sound)
+        ufo_presence_sound = sounds.get('ufo_presence', empty_sound)
+        explosion_sound = sounds.get('explosion', empty_sound)
 
         # Set volumes
         shoot_sound.set_volume(0.4)
@@ -1195,19 +1136,24 @@ def main():
         ufo_death_sound.set_volume(0.5)
         ufo_shoot_sound.set_volume(0.3)
         title_music.set_volume(0.5)
-        ufo_presence_sound.set_volume(0.2)  # Keep UFO presence sound subtle
+        ufo_presence_sound.set_volume(0.2)
+        explosion_sound.set_volume(0.5)
 
         shield_up_sound = power_up_sound
 
     except Exception as e:
         print(f"Error loading sounds: {str(e)}")
         print("Running without sound.")
-        shoot_sound = laser_sound = spread_sound = hit_sound = shield_up_sound = power_up_sound = game_over_sound = enemy_death_sound = charge_sound = shield_recharge_sound = ufo_hit_sound = ufo_death_sound = ufo_shoot_sound = title_music = ufo_presence_sound = empty_sound
+        # Assign empty sound to all sound variables if loading fails
+        shoot_sound = laser_sound = spread_sound = hit_sound = shield_up_sound = \
+        power_up_sound = game_over_sound = enemy_death_sound = charge_sound = \
+        shield_recharge_sound = ufo_hit_sound = ufo_death_sound = ufo_shoot_sound = \
+        title_music = ufo_presence_sound = explosion_sound = empty_sound
 
     game_state = MENU
     bird, pipes, enemies, bullets, powerups, gates, ufos, stars, score, last_pipe, last_enemy, last_powerup, last_gate, last_ufo = reset_game()
-    enemy_frequency = 2000  # milliseconds
-    powerup_frequency = 8000  # Increased frequency for power-ups
+    enemy_frequency = 2000
+    powerup_frequency = 8000
     font = pygame.font.Font(None, 36)
     high_score = 0
 
@@ -1217,9 +1163,8 @@ def main():
     clock = pygame.time.Clock()
     charging_started = False
 
-    show_title_screen(screen, {
-        'title_music': title_music
-    })
+    # Start playing title music right away in menu
+    title_music.play(-1)  # Loop the music
 
     while running:
         current_time = pygame.time.get_ticks()
@@ -1453,11 +1398,9 @@ def main():
             star.draw(screen)
 
         if game_state == MENU:
-            draw_message(screen, "Flappy Bird", -80)
+            draw_message(screen, "Space Flapper", -80)
             draw_message(screen, "Press SPACE to Start", -40)
             draw_message(screen, "X to Shoot, SPACE to Flap", 0)
-            draw_message(screen, "Collect purple (spread) and cyan (laser) power-ups!", 40)
-            draw_message(screen, "Collect green shield power-ups to gain shields!", 80)
         else:
             bird.draw(screen, current_time, score)
             for pipe in pipes:
@@ -1485,6 +1428,10 @@ def main():
 
         pygame.display.flip()
         clock.tick(60)
+
+        # Add music handling for game state changes
+        if game_state == PLAYING and pygame.mixer.get_busy():
+            title_music.stop()  # Stop title music when game starts
 
     pygame.quit()
     sys.exit()
