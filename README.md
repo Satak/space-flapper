@@ -1,6 +1,6 @@
-# Flappy Bird Clone
+# Space Flapper
 
-A simple Flappy Bird clone created with Python and Pygame.
+![Space Flapper](space_flapper.webp)
 
 ## Installation
 
@@ -20,10 +20,3 @@ python flappy_bird.py
 - Press SPACE to make the bird flap
 - Avoid hitting the pipes
 - Try to get the highest score possible!
-
-## Features
-
-- Simple and intuitive controls
-- Score tracking
-- Increasing difficulty as you progress
-- Collision detection
