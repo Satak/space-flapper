@@ -341,8 +341,6 @@ class Bird:
             1: (255, 165, 0)     # Orange for 1 shield (matching player color)
         }
 
-        self.nuke_ammo = 3  # Start with 3 nukes
-
     def reset(self):
         self.x = 50
         self.y = SCREEN_HEIGHT // 2
@@ -545,7 +543,8 @@ class Bird:
                     nuke = Bullet(self.x + self.radius * 2, self.y, WeaponType.NUKE, velocity=3)
                     self.active_nuke = nuke
                     bullets.append(nuke)
-                    return bullets, False
+                    self.weapon.ammo -= 1  # Decrease ammo when shooting nuke
+                    return bullets, False  # Never reset here, wait for detonation
                 elif self.weapon.type == WeaponType.DEFAULT:
                     bullets.append(Bullet(self.x, self.y, self.weapon.type))
                     shoot_sound.play()
@@ -557,7 +556,7 @@ class Bird:
                     bullets.append(Bullet(self.x, self.y, self.weapon.type))
                     laser_sound.play()
 
-                if self.weapon.type != WeaponType.DEFAULT:
+                if self.weapon.type != WeaponType.DEFAULT and self.weapon.type != WeaponType.NUKE:
                     self.weapon.ammo -= 1
                     should_reset = self.weapon.ammo <= 0
                     if should_reset:
@@ -608,18 +607,21 @@ class Bird:
         self.active_nuke = None
 
         # Count enemies killed
-        enemies_killed = len(enemies) + len(ufos) + len(blobs)  # Add blobs to kill count
+        enemies_killed = len(enemies) + len(ufos) + len(blobs)
 
         # Clear all enemies
         enemies.clear()
-        ufos.clear()
-        blobs.clear()  # Clear all blobs
+        if len(ufos) > 0:
+            ufos.clear()
+            ufo_presence_sound.stop()  # Stop UFO sound when all UFOs are destroyed
+        blobs.clear()
 
         # Destroy all gates
         for gate in gates:
             gate.destroyed = True
 
-        return True, enemies_killed
+        # Return True only if this was the last nuke AND it's detonated
+        return self.weapon.ammo <= 0, enemies_killed
 
 class PowerUp:
     def __init__(self, type, x, y):
@@ -678,8 +680,8 @@ class TentacleBlob:
         self.y = y if y is not None else random.randint(50, SCREEN_HEIGHT - 50)
         self.radius = 15
         self.health = 3
-        self.color = (0, 255, 0)  # Green blob
-        self.glow_color = (128, 255, 128)  # Light green glow
+        self.color = (255, 0, 255)  # Changed from green to purple
+        self.glow_color = (255, 128, 255)  # Changed to light purple glow
 
         # Movement parameters
         self.speed = 3
@@ -1403,7 +1405,7 @@ def main():
                         # Only handle detonation on key press
                         should_reset, enemies_killed = bird.detonate_nuke(enemies, bullets, screen, ufos, gates, blobs)
                         score += enemies_killed * 5  # Add 5 points per enemy killed
-                        if should_reset:
+                        if should_reset and bird.weapon.ammo <= 0:  # Only reset if out of ammo and after detonation
                             bird.weapon = Weapon()
                     else:
                         # Handle all other weapons including nuke launch
