@@ -6,14 +6,14 @@
 
 1. Install the required dependencies:
 ```bash
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 ```
 
 ## How to Play
 
 1. Run the game:
 ```bash
-python flappy_bird.py
+python3 space_flapper.py
 ```
 
 2. Game Controls:
